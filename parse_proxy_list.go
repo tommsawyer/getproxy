@@ -2,49 +2,35 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
-
-	"github.com/PuerkitoBio/goquery"
+	"regexp"
+	"strings"
 )
 
-const freeProxyListSite = "https://free-proxy-list.net"
+var rowWithIpAndPort = regexp.MustCompile(`<td>\d+\.\d+\d\.\d+\.\d+</td><td>\d+`)
 
 func parseFreeProxyList() ([]*url.URL, error) {
-	resp, err := http.Get(freeProxyListSite)
+	resp, err := http.Get("https://free-proxy-list.net")
 	if err != nil {
 		return nil, fmt.Errorf("cannot get free proxy list: %v", err)
 	}
 	defer resp.Body.Close()
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	bs, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read document body: %v", err)
+		return nil, err
 	}
 
-	rows := doc.Find(".table-responsive tbody > tr")
-	urls := make([]*url.URL, 0, rows.Length())
+	rows := rowWithIpAndPort.FindAllString(string(bs), -1)
+	urls := make([]*url.URL, len(rows))
+	for i, row := range rows {
+		rawURL := "http://" + strings.Replace(strings.Replace(row, "</td><td>", ":", -1), "<td>", "", -1)
 
-	rows.Each(func(i int, row *goquery.Selection) {
-		u, err := parseURL(row)
-		if err != nil {
-			return
-		}
-
-		urls = append(urls, u)
-	})
+		u, _ := url.Parse(rawURL)
+		urls[i] = u
+	}
 
 	return urls, nil
-}
-
-func parseURL(row *goquery.Selection) (*url.URL, error) {
-	ip := getCellText(row, 0)
-	port := getCellText(row, 1)
-	rawURL := fmt.Sprintf("http://%s:%s", ip, port)
-
-	return url.Parse(rawURL)
-}
-
-func getCellText(row *goquery.Selection, idx int) string {
-	return row.Find("td").Eq(idx).Text()
 }
