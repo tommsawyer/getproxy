@@ -12,7 +12,7 @@ import (
 func main() {
 	urls, err := parseFreeProxyList()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
@@ -34,7 +34,7 @@ func main() {
 
 	select {
 	case <-allChecksFinished(proxyChecks):
-		fmt.Fprintf(os.Stderr, "all proxies unavailable")
+		fmt.Fprintln(os.Stderr, "all proxies unavailable")
 		os.Exit(1)
 	case proxy := <-availableProxy:
 		cancelProxyChecks()
@@ -47,13 +47,13 @@ func isProxyAvailable(ctx context.Context, proxy *url.URL) bool {
 	transport := &http.Transport{Proxy: http.ProxyURL(proxy)}
 	client := &http.Client{Transport: transport}
 
-	req, _ := http.NewRequest("GET", "https://google.com", nil)
+	req, _ := http.NewRequest("HEAD", "https://www.google.com", nil)
 
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	return resp.StatusCode == http.StatusOK
 }
