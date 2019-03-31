@@ -58,11 +58,6 @@ func isProxyAvailable(ctx context.Context, proxy *url.URL) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-func exitWithError(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args...)
-	os.Exit(1)
-}
-
 func allChecksFinished(wg sync.WaitGroup) <-chan struct{} {
 	done := make(chan struct{})
 
