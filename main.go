@@ -16,7 +16,7 @@ var htmlTableRowWithIPAndPort = regexp.MustCompile(`<td>(\d+\.\d+\d\.\d+\.\d+)</
 func main() {
 	proxy, err := getProxy()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot get proxy: %v", err)
+		fmt.Fprintf(os.Stderr, "cannot get proxy: %v\n", err)
 		os.Exit(1)
 	}
 
