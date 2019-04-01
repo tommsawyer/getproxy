@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sync"
 )
+
+var rowWithIpAndPort = regexp.MustCompile(`<td>(\d+\.\d+\d\.\d+\.\d+)</td><td>(\d+)`)
 
 func main() {
 	urls, err := parseFreeProxyList()
@@ -41,6 +45,28 @@ func main() {
 		proxyChecks.Wait()
 		fmt.Println(proxy)
 	}
+}
+
+func parseFreeProxyList() ([]*url.URL, error) {
+	resp, err := http.Get("https://free-proxy-list.net")
+	if err != nil {
+		return nil, fmt.Errorf("cannot get free proxy list: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bs, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := rowWithIpAndPort.FindAllStringSubmatch(string(bs), -1)
+	urls := make([]*url.URL, len(rows))
+	for i, row := range rows {
+		u, _ := url.Parse(fmt.Sprintf("http://%s:%s", row[1], row[2]))
+		urls[i] = u
+	}
+
+	return urls, nil
 }
 
 func isProxyAvailable(ctx context.Context, proxy *url.URL) bool {
