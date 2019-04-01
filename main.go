@@ -11,13 +11,22 @@ import (
 	"sync"
 )
 
-var rowWithIpAndPort = regexp.MustCompile(`<td>(\d+\.\d+\d\.\d+\.\d+)</td><td>(\d+)`)
+var htmlTableRowWithIPAndPort = regexp.MustCompile(`<td>(\d+\.\d+\d\.\d+\.\d+)</td><td>(\d+)`)
 
 func main() {
+	proxy, err := getProxy()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot get proxy: %v", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(proxy)
+}
+
+func getProxy() (*url.URL, error) {
 	urls, err := parseFreeProxyList()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		return nil, err
 	}
 
 	ctx, cancelProxyChecks := context.WithCancel(context.Background())
@@ -40,13 +49,13 @@ func main() {
 	}
 
 	select {
-	case <-allChecksFinished(proxyChecks):
-		fmt.Fprintln(os.Stderr, "all proxies unavailable")
-		os.Exit(1)
+	case <-allChecksFinished(&proxyChecks):
+		return nil, fmt.Errorf("all proxies unavailable")
 	case proxy := <-availableProxy:
 		cancelProxyChecks()
 		proxyChecks.Wait()
-		fmt.Println(proxy)
+		close(availableProxy)
+		return proxy, nil
 	}
 }
 
@@ -57,27 +66,27 @@ func parseFreeProxyList() ([]*url.URL, error) {
 	}
 	defer resp.Body.Close()
 
-	bs, err := ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	rows := rowWithIpAndPort.FindAllStringSubmatch(string(bs), -1)
+	rows := htmlTableRowWithIPAndPort.FindAllStringSubmatch(string(body), -1)
 	urls := make([]*url.URL, len(rows))
 	for i, row := range rows {
-		u, _ := url.Parse(fmt.Sprintf("http://%s:%s", row[1], row[2]))
-		urls[i] = u
+		ip := row[1]
+		port := row[2]
+		urls[i], _ = url.Parse(fmt.Sprintf("http://%s:%s", ip, port))
 	}
 
 	return urls, nil
 }
 
 func isProxyAvailable(ctx context.Context, proxy *url.URL) bool {
-	transport := &http.Transport{Proxy: http.ProxyURL(proxy)}
-	client := &http.Client{Transport: transport}
+	withProxy := &http.Transport{Proxy: http.ProxyURL(proxy)}
+	client := &http.Client{Transport: withProxy}
 
 	req, _ := http.NewRequest("HEAD", "https://www.google.com", nil)
-
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		return false
@@ -87,11 +96,11 @@ func isProxyAvailable(ctx context.Context, proxy *url.URL) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-func allChecksFinished(wg sync.WaitGroup) <-chan struct{} {
+func allChecksFinished(checks *sync.WaitGroup) <-chan struct{} {
 	done := make(chan struct{})
 
 	go func() {
-		wg.Wait()
+		checks.Wait()
 		close(done)
 	}()
 
