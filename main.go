@@ -31,7 +31,10 @@ func main() {
 			defer proxyChecks.Done()
 
 			if isProxyAvailable(ctx, u) {
-				availableProxy <- u
+				select {
+				case availableProxy <- u:
+				default:
+				}
 			}
 		}(u)
 	}
